@@ -1,3 +1,5 @@
+from __future__ import annotations
+import sys
 from typing import List, Dict, Tuple, Union, Callable
 from pathlib import Path
 import numpy as np
@@ -9,6 +11,13 @@ import requests
 import time
 from pprint import pprint
 from paths import PATHS
+
+hytraits_path = Path(__file__).resolve().parent.parent/'hytraits'
+if str(hytraits_path) not in sys.path:
+    sys.path.append(str(hytraits_path))
+from hytraits import (TabularSpectraDataset,
+                      Splits,
+                      CommunityWeightingPercent)
 
 
 def save_df(df: DataFrame,
@@ -27,13 +36,13 @@ def save_df(df: DataFrame,
 
 
 def compatible(orig_dir: Path,
-               comp_dir: Path) -> None:
+               comp_dir: Path,
+               prefix: str) -> None:
     '''
     Read the original data from orig_dir and write the compatible-format
     spectra/traits files into comp_dir as CSV and parquet.
     '''
 
-    prefix = 'anastasia'
     comp_dir.mkdir(parents=True, 
                    exist_ok=True)
 
@@ -96,8 +105,7 @@ def compatible(orig_dir: Path,
     # the spectrum is identical for every row of a sample, so keep the first
     first_id = '1'.zfill(max_pad)
     sdf = odf.loc[odf['spectrum_id'] == first_id, sdf_cols].copy()
-    # print(f'sdf shape: {sdf.shape}')
-
+    
     save_df(df=sdf,
             save_dir=comp_dir,
             stem=f'{prefix}_spectra',
@@ -115,16 +123,11 @@ def compatible(orig_dir: Path,
 
     wave_ranges = []
     start = waves[0]
-
     for w0, w1, d in zip(waves, waves[1:], diffs):
         if d > 1.5*nominal:
             wave_ranges.append((start, w0))
             start = w1
-
     wave_ranges.append((start, waves[-1]))
-    # print(f'nominal spacing: {nominal:.2f} nm')
-    # pprint(wave_ranges)
-
     with open(comp_dir/f'{prefix}_waveranges.json', 'w') as fp:
         json.dump(wave_ranges, fp, indent=4)
 
@@ -137,12 +140,9 @@ def compatible(orig_dir: Path,
                 'subsample_wt',
                 'cover_id',
                 'cover_wt']
-
     for t in traits:
         tdf_cols += [t, f'{t}_sdev']
-
     tdf = odf[tdf_cols].copy()
-    # print(f'tdf shape: {tdf.shape}')
 
     save_df(df=tdf,
             save_dir=comp_dir,
@@ -153,13 +153,61 @@ def compatible(orig_dir: Path,
             stem=f'{prefix}_traits',
             ext='parquet')
 
+    # save trait columns list
     with open(comp_dir/f'{prefix}_traitcols.json', 'w') as fp:
         json.dump(traits, fp, indent=4)
 
 
+def community_weighting(comp_dir: Path,
+                        prefix: str) -> None:
+    # create a community weighting "strategy" file.
+    # Percent cover has sdev = 1% around specified!
+    # We have only one bin.
+    strat_df = DataFrame({'bin_index': [1],
+                          'bin_sdev': [1.0],
+                          'bin_left': [0.0],
+                          'bin_right': [100.01]})
+    strat_df.to_csv(comp_dir/f'{prefix}_cwparams.csv',
+                    index=False)
+    
+    # actually do the community weighting
+    comwgt = CommunityWeightingPercent(coverid_averaging=False,
+                                       coverwt_sampling=True,
+                                       n_repeats=100000)
+    t_pqts = [comp_dir/f'{prefix}_traits.parquet']
+    cwt_csv = comp_dir/f'{prefix}_cwparams.csv'
+    with open(comp_dir/f'{prefix}_traitcols.json', 'r') as fp:
+        traits = json.load(fp)
+
+    dfs = []
+    for trait in traits:
+        print(f'{trait}: community weighting ...')
+        df = comwgt(trait_files=t_pqts,
+                    trait_column=trait,
+                    coverwt_params=cwt_csv)
+        dfs.append(df.set_index('sample_id'))
+    mdf = pd.concat(dfs, axis=1).reset_index()
+    save_df(df=mdf,
+            save_dir=comp_dir,
+            stem=f'{prefix}_cwtraits',
+            ext='csv')
+    save_df(df=mdf,
+            save_dir=comp_dir,
+            stem=f'{prefix}_cwtraits',
+            ext='parquet')
+
+    # save cwtrait columns list
+    cwtrait_cols = [f'mc_{t}' for t in traits]
+    with open(comp_dir/f'{prefix}_cwtraitcols.json', 'w') as fp:
+        json.dump(cwtrait_cols, fp, indent=4)
+    
+    
 if __name__ == '__main__':
     
     # See README.
 
     compatible(orig_dir=PATHS['origdata'],
-               comp_dir=PATHS['compdata'])
+               comp_dir=PATHS['compdata'],
+               prefix='anastasia')
+    community_weighting(comp_dir=PATHS['compdata'],
+                        prefix='anastasia')

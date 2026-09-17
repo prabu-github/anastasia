@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
 import argparse
+import time
+import datetime
 from pprint import pprint
 
 from paths import PATHS
@@ -20,9 +22,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Tests for project.py.')
 
     parser.add_argument('--dskey',
-                        choices=['sophia260424'],
+                        choices=['anastasia'],
                         action='store',
-                        default='sophia260424')
+                        default='anastasia')
     parser.add_argument('--get_xtransforms',
                         action='store_true',
                         default=False)
@@ -41,7 +43,7 @@ if __name__ == '__main__':
                         default=False)
     parser.add_argument('--modelname',
                         action='store',
-                        default='dplsr__sophia260424-TSS__wr5-vsbl-uv__id')
+                        default='dplsr__anastasia-TSS__wr5-vsbl-uv__id')
     parser.add_argument('--train',
                         action='store_true',
                         default=False)
@@ -54,7 +56,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.get_xtransforms:
-        xts = get_xtransforms(ds_key=args.dskey)
+        xts = get_xtransforms(comp_dir=PATHS['compdata'],
+                              ds_key=args.dskey)
         for k in xts:
             print(k)
             for t in xts[k]:
@@ -88,11 +91,15 @@ if __name__ == '__main__':
 
     if args.train:
         if 'univar' in args.modelname:
+            before = time.perf_counter()
             project_analyze_univariate(model_name=args.modelname,
                                        comp_dir=PATHS['compdata'],
                                        model_dir=PATHS['model'],
                                        deploy_dir=PATHS['deploy'],
                                        seed=42)
+            after = time.perf_counter()
+            elapsed = after - before
+            print(str(datetime.timedelta(seconds=round(elapsed))))
         else:
             project_fit_model(model_name=args.modelname,
                               comp_dir=PATHS['compdata'],

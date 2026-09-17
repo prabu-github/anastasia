@@ -1,0 +1,42 @@
+#!/bin/bash 
+
+MODEL=$1
+INIT=INITIAL
+USER=USERNAME
+PROJ=PROJNAME
+
+
+echo "Setting up HyTraits ..."
+cp /staging/$INIT/$USER/$PROJ/toremote/hytraits.tar.gz .
+tar -xzf hytraits.tar.gz 
+rm -f hytraits.tar.gz 
+
+echo "Setting up $PROJ ..."
+cp /staging/$INIT/$USER/$PROJ/toremote/$PROJ.tar.gz .
+tar -xzf $PROJ.tar.gz
+rm -f $PROJ.tar.gz
+
+python $PROJ/run.py --train_model $MODEL 
+
+FIRST="${MODEL%%:*}"
+LAST="${MODEL##*:}"
+
+if [[ "$MODEL" == *":"* ]]; then
+    PACKNAME="${FIRST}____${LAST}"
+else
+    PACKNAME="$MODEL"
+fi
+
+echo "Creating $PACKNAME.tar.gz ..."
+tar \
+	-czf \
+	$PACKNAME.tar.gz \
+	$PROJ/gendata/model \
+    $PROJ/gendata/deploy
+
+echo "Moving $PACKNAME.tar.gz to staging ..."
+mv $PACKNAME.tar.gz /staging/$INIT/$USER/$PROJ/fromremote
+
+echo "Cleaning up ..."
+rm -rf hytraits
+rm -rf $PROJ

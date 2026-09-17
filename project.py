@@ -33,17 +33,17 @@ def get_dataset(comp_dir: Path,
                 xtransforms: List[H.BaseTransform] = [],
                 ytransforms: List[H.BaseTransform] = [],
                 seed: int = 42) -> H.TabularSpectraDataset:
-    if ds_key not in ['sophia260424']:
+    if ds_key not in ['anastasia']:
          raise Exception(f'Invalid {ds_key = }')
         
     s_files = [comp_dir/f'{ds_key}_spectra.{extension}']
-    t_files = [comp_dir/f'{ds_key}_traits.{extension}']
+    t_files = [comp_dir/f'{ds_key}_cwtraits.{extension}']
     
     with open(comp_dir/f'{ds_key}_waveranges.json', 'r') as f:
         wave_ranges_ = json.load(f)
     wave_ranges = [tuple(e) for e in wave_ranges_]
 
-    trait_clip = (0.0, None)
+    trait_clip = (None, None) # Al has incorrect negatives; isotopes can be correct negatives!
     
     return TabularSpectraDataset(spectra_files=s_files,
                                  wave_ranges=wave_ranges,
@@ -54,7 +54,7 @@ def get_dataset(comp_dir: Path,
                                  spectra_averaging=False,
                                  spectra_sampling=False,
                                  sample_selector=None,
-                                 trait_sampling=False,
+                                 trait_sampling=True,
                                  trait_clip=trait_clip,
                                  seed=seed)
 
@@ -62,7 +62,7 @@ def get_dataset(comp_dir: Path,
 def get_splits(dataset: TabularSpectraDataset,
                ds_key: str,
                seed: int = 42) -> Splits:
-    repeats = (100, 30)
+    repeats = (200, 50)
     types = ('montecarlo', 'montecarlo')
     params = (15, 15)
     idxs = dataset.sid2idx(dataset.i2s)
@@ -76,7 +76,8 @@ def get_splits(dataset: TabularSpectraDataset,
 ######################################################
 
 
-def get_xtransforms(ds_key: str) -> Dict:
+def get_xtransforms(comp_dir: Path,
+                    ds_key: str) -> Dict:
     '''
     xtransform strategies. 
 
@@ -85,12 +86,11 @@ def get_xtransforms(ds_key: str) -> Dict:
     '''  
     xtransforms = {}
 
-    wr = WavelengthResampling5nm(wave_range=(410, 800))
-    kw = KeepWavelengths(keep_ranges=[(410, 800)])
+    with open(comp_dir/f'{ds_key}_waveranges.json', 'r') as fp:
+        ranges = [tuple(e) for e in json.load(fp)]
+    kw = KeepWavelengths(keep_ranges=ranges)
     uv = UnitVectorize()
-    xtransforms['wr5-vsbl-uv'] = [wr, 
-                                  kw, 
-                                  uv]
+    xtransforms['full-uv'] = [kw, uv]
     return xtransforms
     
 
@@ -110,14 +110,15 @@ def get_modelnames(comp_dir: Path,
                    patterns: List[str] = ['*']) -> List[str]:
     model_names = []
     
-    ds_keys = ['sophia260424']
+    ds_keys = ['anastasia']
     
     for ds_key in ds_keys:
-        with open(comp_dir/f'{ds_key}_traitcols.json') as reader:
+        with open(comp_dir/f'{ds_key}_cwtraitcols.json') as reader:
             traitcols = json.load(reader)
         traits = [f'{ds_key}-{tcol}' for tcol in traitcols]
         
-        xts = get_xtransforms(ds_key=ds_key).keys()
+        xts = get_xtransforms(comp_dir=comp_dir,
+                              ds_key=ds_key).keys()
         yts = get_ytransforms(ds_key=ds_key).keys()
         pieces = [['univar', 'dplsr'],
                   traits,
@@ -144,7 +145,8 @@ def get_data(model_name: str,
     k_xt = tkns[2]
     k_yt = tkns[3]
 
-    xts = get_xtransforms(ds_key=k_ds)
+    xts = get_xtransforms(comp_dir=comp_dir,
+                          ds_key=k_ds)
     yts = get_ytransforms(ds_key=k_ds)
     ds = get_dataset(comp_dir=comp_dir,
                      ds_key=k_ds,
@@ -173,8 +175,11 @@ def project_fit_model(model_name: str,
     dataset, splits = get_data(comp_dir=comp_dir,
                                model_name=model_name,
                                seed=seed)
-    
-    hyps = {'n_components': 60,
+    min_train_size = len(dataset)
+    for oi in range(splits.n_outers):
+        idxs = splits.split(oi=oi, ii=0, label='train')
+        min_train_size = min(min_train_size, len(idxs))
+    hyps = {'n_components': min_train_size - 2,
             'sweep': True,
             'model_type': 'dplsr'}
 

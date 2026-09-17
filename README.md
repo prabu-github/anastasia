@@ -19,9 +19,9 @@ Code for anastasia
 - `python anastasia/test_project.py --get_xtransforms`
 - `python anastasia/test_project.py --get_ytransforms`
 - `python anastasia/test_project.py --get_modelnames --pattern '*'`
-- `python anastasia/test_project.py --get_data --modelname dplsr__sophia260424-ammonium__wr5-vsbl-uv__id`
-- `python anastasia/test_project.py --train --modelname dplsr__sophia260424-ammonium__wr5-vsbl-uv__id`
-- `python anastasia/test_project.py --train --modelname univar__sophia260424-ammonium__wr5-vsbl-uv__id`
+- `python anastasia/test_project.py --get_data --modelname dplsr__anastasia-mc_nitrogen__full-uv__id`
+- `python anastasia/test_project.py --train --modelname dplsr__anastasia-mc_nitrogen__full-uv__id`
+- `python anastasia/test_project.py --train --modelname univar__anastasia-mc_nitrogen__full-uv__id`
 
 ---
 
